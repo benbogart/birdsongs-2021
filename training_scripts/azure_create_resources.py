@@ -72,7 +72,7 @@ def create_ws(subscription_id, name):
                    subscription_id=subscription_id,
                    resource_group=name,
                    create_resource_group=True,
-                   location='eastus2'
+                   location='northcentralus'
                    )
 
     workspace.write_config(path='.azureml')
@@ -82,11 +82,11 @@ def create_compute(ws, gpus):
 
     if gpus == 1:
         # # the name for the cluster
-        #compute_name = "gpu-cluster-NC6"
-        compute_name = "gpu-cluster-NC4as"
+        compute_name = "gpu-cluster-NC6"
+        # compute_name = "gpu-cluster-NC4as"
         # # the reference to the azure machine type
-        #vm_size = 'Standard_NC6_Promo'
-        vm_size = 'Standard_NC4as_T4_v3'
+        vm_size = 'Standard_NC6_Promo'
+        # vm_size = 'Standard_NC4as_T4_v3'
 
     elif gpus == 2:
         # the name for the cluster
@@ -119,6 +119,7 @@ def create_env(ws):
     cd = CondaDependencies.create(pip_packages=['azureml-dataset-runtime[pandas,fuse]',
                                                 'azureml-defaults',
                                                 'tensorflow==2.4.0',
+                                                'tensorflow-io'
                                                 'Pillow',
                                                 'sklearn',
                                                 'kapre',
@@ -280,14 +281,8 @@ def upload_data(ws):
     datastore = ws.get_default_datastore()
 
     # upload the mp3 files
-    datastore.upload(src_dir='../data/audio_10sec',
-                     target_path='/data/audio_10sec',
-                     overwrite=False,
-                     show_progress=True)
-
-    # upload the npy files
-    datastore.upload(src_dir='../data/npy',
-                     target_path='/data/npy',
+    datastore.upload(src_dir='../input/birdclef-2021',
+                     target_path='/input/birdclef-2021',
                      overwrite=False,
                      show_progress=True)
 
