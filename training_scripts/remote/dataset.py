@@ -12,8 +12,20 @@ class SimpleDataset() :
         return filename, label
 
     def load_audio(self, file_path, label):
-        audio = tf.io.read_file(file_path)
-        audio = tfio.audio.decode_vorbis(audio)
+
+        # can we load a partial file??
+        # audio = tf.io.read_file(file_path)
+        # audio = tfio.audio.decode_vorbis(audio)
+
+        audio = tfio.audio.AudioIOTensor(file_path, dtype=tf.int32)
+        # crop to first 10 seconds
+        audio_cropped = audio[:audio.rate*10]
+
+        # pad it out if its shorter
+        paddings = tf.stack([[0, audio[:audio.rate*10]], [0,0]])
+
+        audio = tf.pad(audio_cropped, paddings)
+
         return audio, label
 
     def get_species_enum_table(self):
@@ -35,11 +47,22 @@ class SimpleDataset() :
 if __name__ == '__main__':
     print("Testing SimpleDataset")
     print('-'*100)
-    
-    sd = SimpleDataset('../../input/birdclef-2021/train_short_audio/*/*.ogg')
+
+    from azureml.core import Dataset, Workspace
+    import os
+
+    ws = Workspace.from_config()
+    dataset = ws.datasets['train_short_audio']
+    mount_ctx = dataset.mount()
+    mount_ctx.start()
+    print(mount_ctx.mount_point)
+
+    sd = SimpleDataset(os.path.join(mount_ctx.mount_point,
+                                    'train_short_audio/*/*.ogg'))
 
     ds = sd.get_dataset()
 
     for row in ds:
         print(row)
+        print(row[0].shape)
         break
