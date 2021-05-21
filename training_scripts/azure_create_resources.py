@@ -56,7 +56,7 @@ def parse_args():
 
     parser.add_argument('--data-path', type=str,
                             dest='data_path',
-                            default='/data',
+                            default='/',
                             help='Path in datastore')
 
     return parser.parse_args()
@@ -119,7 +119,7 @@ def create_env(ws):
     cd = CondaDependencies.create(pip_packages=['azureml-dataset-runtime[pandas,fuse]',
                                                 'azureml-defaults',
                                                 'tensorflow==2.4.0',
-                                                'tensorflow-io'
+                                                'tensorflow-io==0.17.1',
                                                 'Pillow',
                                                 'sklearn',
                                                 'kapre',
