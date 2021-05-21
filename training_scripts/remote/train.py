@@ -49,7 +49,7 @@ def process_arguments():
     parser.add_argument('--data-subset',
                         type=str,
                         dest='data_subset',
-                        default='kaggle_10sec_ogg',
+                        default='kaggle_ogg',
                         help='the subset of the data to use [all, kaggle].')
 
     parser.add_argument('--augment-position',
@@ -100,6 +100,11 @@ print('-'*100)
 
 args = process_arguments()
 print('ARGS\n',args)
+
+print(os.listdir(args.data_path))
+
+# create outputs dir
+os.makedirs('outputs', exist_ok = True)
 
 # set variables
 sr = args.sr # sample rate
@@ -216,24 +221,31 @@ BATCH_SIZE = 32
 ## Create Datasets ##
 #####################
 
+# # Limit for Testing
+# train_files = train_files[:129]
+# val_files = val_files[:129]
+# test_files = test_files[:129]
+
+
 from dataset import SimpleDataset
-train_sd = SimpleDataset('../../input/birdclef-2021/train_short_audio',
+train_sd = SimpleDataset(os.path.join(args.data_path,'input/birdclef-2021/train_short_audio'),
                          files_list=train_files)
 train_ds = train_sd.get_dataset()
 
 
-val_sd = SimpleDataset('../../input/birdclef-2021/train_short_audio',
+val_sd = SimpleDataset(os.path.join(args.data_path,'input/birdclef-2021/train_short_audio'),
                        files_list=val_files)
 val_ds = val_sd.get_dataset()
 
-test_sd = SimpleDataset('../../input/birdclef-2021/train_short_audio',
+test_sd = SimpleDataset(os.path.join(args.data_path,'input/birdclef-2021/train_short_audio'),
                         is_test=True,
                         files_list=test_files)
 test_ds = test_sd.get_dataset()
 
-
-train_ds.element_spec
-
+print('ELEMENT SPEC:', train_ds.element_spec)
+print('train_sd.is_test', train_sd.is_test)
+print('val_sd.is_test', val_sd.is_test)
+print('test_sd.is_test', test_sd.is_test)
 
 # # Choose DataGenerator or AugDataGenerator
 # if args.augment_position or args.augment_pitch or args.augment_stretch:
@@ -283,9 +295,9 @@ train_ds.element_spec
 
 # metrics
 metrics = [
-    K.metrics.CategoricalAccuracy(),
-    K.metrics.TopKCategoricalAccuracy(k=3, name='top_3_accuracy'),
-    K.metrics.TopKCategoricalAccuracy(k=5, name='top_5_accuracy')
+    K.metrics.CategoricalAccuracy()
+#    K.metrics.TopKCategoricalAccuracy(k=3, name='top_3_accuracy'),
+#    K.metrics.TopKCategoricalAccuracy(k=5, name='top_5_accuracy')
 ]
 
 # Construct model
@@ -321,69 +333,71 @@ if args.online:
 
 # calculate steps per epoch
 
-steps_per_epoch = np.floor(len(train_files) / BATCH_SIZE)
+steps_per_epoch = np.ceil(len(train_files) / BATCH_SIZE)
+validation_steps = np.ceil(len(val_files) / BATCH_SIZE)
+
 print('steps_per_epoch:', steps_per_epoch)
 
 # fit model
-train_ds = train_ds.batch(2)
-
+# train_ds = train_ds.batch(2)
 
 audio, label = next(train_ds.as_numpy_iterator())
 print('audio shape:', audio.shape)
 print('label shape:', label.shape)
+#
+# history = model.fit(train_ds,
+#                     steps_per_epoch=steps_per_epoch,
+#                     epochs=2)
 
 history = model.fit(train_ds,
-                    steps_per_epoch=steps_per_epoch,
-                    epochs=2)
+                    steps_per_epoch=steps_per_epoch, # only for quick testing
+                    validation_data=val_ds,
+                    validation_steps=validation_steps,
+                    epochs=args.epochs,
+                    callbacks=callbacks)
 
-# history = model.fit(train_ds,
-#                     steps_per_epoch=1, # only for quick testing
-#                     validation_data=val_ds,
-#                     epochs=args.epochs,
-#                     callbacks=callbacks)
+# save history
+print('Saving model history...')
 
-# # save history
-# print('Saving model history...')
-# os.makedirs('outputs', exist_ok = True)
-# with open(f'outputs/{args.model_name}-{runid}.history', 'wb') as f:
-#     pickle.dump(history.history, f)
-#
-#
-# print('Loading best model for testing...')
-# model.load_weights(f'outputs/{args.model_name}-{runid}.h5')
-#
-# # save predictions
-# # do this first so the generator starts from the beginning
-# print('generating predictions on test set...')
-# test_pred = model.predict(test_generator)
-#
-# print('saving test predictions...')
-# with open(f'outputs/{args.model_name}-{runid}-test_predictions.pkl', 'wb') as f:
-#     pickle.dump(test_pred, f)
-#
-#
-# # evaluate test set
-# print('evaluating model on test set...')
-# model_val = model.evaluate(test_generator)
-#
-# print('model_val len',len(model_val))
-# print('metrics len',len(metrics))
-#
-# # build test metric dict
-# test_metrics = {}
-# for i, m in enumerate(metrics):
-#     print(f'test_{m.name}: {model_val[i+1]}')
-#     test_metrics['test_'+m.name] = model_val[i+1]
-#     if args.online:
-#         print('logging metrics...')
-#         run.log('test_'+m.name, np.float(model_val[i+1]))
-#
-# # save test metrics
-# print('Saving test metrics...')
-# os.makedirs('outputs', exist_ok=True)
-# with open(f'outputs/{args.model_name}-{runid}-test_metrics.plk', 'wb') as f:
-#     pickle.dump(test_metrics, f)
-#
-#
-# print('Done!')
-# print('-'*100)
+with open(f'outputs/{args.model_name}-{runid}.history', 'wb') as f:
+    pickle.dump(history.history, f)
+
+
+print('Loading best model for testing...')
+model.load_weights(f'outputs/{args.model_name}-{runid}.h5')
+
+# save predictions
+# do this first so the generator starts from the beginning
+print('generating predictions on test set...')
+test_pred = model.predict(test_ds)
+
+print('saving test predictions...')
+with open(f'outputs/{args.model_name}-{runid}-test_predictions.pkl', 'wb') as f:
+    pickle.dump(test_pred, f)
+
+
+# evaluate test set
+print('evaluating model on test set...')
+model_val = model.evaluate(test_ds)
+
+print('model_val len',len(model_val))
+print('metrics len',len(metrics))
+
+# build test metric dict
+test_metrics = {}
+for i, m in enumerate(metrics):
+    print(f'test_{m.name}: {model_val[i+1]}')
+    test_metrics['test_'+m.name] = model_val[i+1]
+    if args.online:
+        print('logging metrics...')
+        run.log('test_'+m.name, np.float(model_val[i+1]))
+
+# save test metrics
+print('Saving test metrics...')
+os.makedirs('outputs', exist_ok=True)
+with open(f'outputs/{args.model_name}-{runid}-test_metrics.pkl', 'wb') as f:
+    pickle.dump(test_metrics, f)
+
+
+print('Done!')
+print('-'*100)
