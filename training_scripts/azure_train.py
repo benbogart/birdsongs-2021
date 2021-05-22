@@ -70,9 +70,9 @@ ws = Workspace.from_config()
 #     train_dataset = Dataset.get_by_name(ws, name='birdsongs_10sec')
 
 # set train dataset
-train_dataset = Dataset.get_by_name(ws, name='train_short_audio')
+train_dataset = Dataset.get_by_name(ws, name='wav_short_audio')
 # get the validation dataset
-val_test_dataset = Dataset.get_by_name(ws, name='train_short_audio')
+val_test_dataset = Dataset.get_by_name(ws, name='wav_short_audio')
 
 ## Get saved enviornment
 env = Environment.get(workspace=ws, name="birdsong-env-gpu")
@@ -98,7 +98,7 @@ else:
 compute_target = ws.compute_targets[compute_name]
 
 # set the args to pass to the training script on azure
-azure_args = ['--data-path', train_dataset.as_named_input('train').as_download(), #.as_mount(),
+azure_args = ['--data-path', train_dataset.as_named_input('train').as_mount(),# .as_download(), #
               '--test-data-path', val_test_dataset.as_named_input('test').as_mount(),
               '--model-name', args.model_name,
               '--epochs', args.epochs,
