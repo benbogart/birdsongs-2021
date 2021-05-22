@@ -1,14 +1,21 @@
 import tensorflow as tf
+
+
+# install tensorflow io here because it is not using pip in the docker image build.
+# !pip uninstall tensorflow-io
+# !pip install tensorflow-io==0.17.1
+
 import tensorflow_io as tfio
 import os
 
 AUTOTUNE = tf.data.experimental.AUTOTUNE
 
 class SimpleDataset() :
-    def __init__(self, data_path, is_test=False, files_list=False):
+    def __init__(self, data_path, batch_size=32, is_test=False, files_list=False):
         self.data_path = data_path
         self.files_list = files_list
         self.is_test = is_test
+        self.batch_size = batch_size
 
     def get_labels_from_path(self, filename):
 
@@ -24,13 +31,16 @@ class SimpleDataset() :
 
     def load_audio(self, file_path, label):
 
-        # Assume all files have been resampled to 32khz
-        sr = 32000
-        seconds = 10
-        samples = sr * seconds
+
         # can we load a partial file??
         audio = tf.io.read_file(file_path)
-        audio = tfio.audio.decode_vorbis(audio)
+        #audio = tfio.audio.decode_vorbis(audio)
+        audio, sr = tf.audio.decode_wav(audio)
+
+        # Assume all files have been resampled to 32khz
+        #sr = 32000
+        seconds = 10
+        samples = sr * seconds
 
         # crop to first 10 seconds
         audio = audio[:samples - 1000] # to test pading
@@ -64,22 +74,34 @@ class SimpleDataset() :
 
         if self.files_list:
             # if a list of file names was provided
+            print('creating from list of length:', len(self.files_list))
             file_paths_ds = tf.data.Dataset.from_tensor_slices(self.files_list)
         else:
             # if no list of filenames use glob
-            file_paths_ds = tf.data.Dataset.list_files(os.path.join(self.data_path,'*/*.ogg'),
+            print('creating from path')
+            file_paths_ds = tf.data.Dataset.list_files(os.path.join(self.data_path,'*/*.wav'),
                                                    shuffle=False)
 
 
+        # add labels
         labels_ds = file_paths_ds.map(self.get_labels_from_path, num_parallel_calls=AUTOTUNE)
         ds = labels_ds.map(self.load_audio, num_parallel_calls=AUTOTUNE)
 
+        ds.cache('dscache')
 
+        #if not self.is_test:
+            #ds = ds.repeat(2)
 
-        # if not self.is_test:
-        #     # shuffle and repeat indefently
-        #     ds = ds.shuffle(1024, reshuffle_each_iteration=True)
-        #     ds = ds.repeat()
+        if not self.is_test:
+            # shuffle if not test set
+            ds = ds.shuffle(32, reshuffle_each_iteration=True)
+
+        # setup dataset
+        ds = ds.batch(self.batch_size)
+        print('Batch Size set to ', self.batch_size)
+        #ds = ds.batch(2)
+
+        ds = ds.prefetch(tf.data.experimental.AUTOTUNE)
 
         return ds
 
@@ -112,13 +134,12 @@ if __name__ == '__main__':
 
     print(train_files[:3])
 
-    sd = SimpleDataset('../../input/birdclef-2021/train_short_audio', train_files)
+    sd = SimpleDataset('../../input/birdclef-2021/train_short_audio',
+                       files_list=train_files[:128])
 
     ds = sd.get_dataset()
 
-    ds = ds.batch(3)
-    ds.as_numpy_iterator()
-
+    # ds = ds.batch(3)
 
     r = 0
     for audio, label in ds.as_numpy_iterator():
