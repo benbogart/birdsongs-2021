@@ -8,6 +8,8 @@ from azureml.core import Run
 from azureml.core import Workspace, Dataset
 from tensorflow import keras as K
 from tensorflow.distribute import MirroredStrategy
+#from tensorflow.compat.v1 import RunOptions
+
 from sklearn.preprocessing import LabelEncoder
 import json
 import subprocess
@@ -214,7 +216,7 @@ if args.online:
     run.tag('gpus', n_gpus)
 
 # Batch size for generators
-BATCH_SIZE = 32
+BATCH_SIZE = 16
 
 
 #####################
@@ -229,15 +231,18 @@ BATCH_SIZE = 32
 
 from dataset import SimpleDataset
 train_sd = SimpleDataset(os.path.join(args.data_path,'input/birdclef-2021/train_short_audio'),
+                         batch_size=BATCH_SIZE,
                          files_list=train_files)
 train_ds = train_sd.get_dataset()
 
 
 val_sd = SimpleDataset(os.path.join(args.data_path,'input/birdclef-2021/train_short_audio'),
+                       batch_size=BATCH_SIZE,
                        files_list=val_files)
 val_ds = val_sd.get_dataset()
 
 test_sd = SimpleDataset(os.path.join(args.data_path,'input/birdclef-2021/train_short_audio'),
+                        batch_size=BATCH_SIZE,
                         is_test=True,
                         files_list=test_files)
 test_ds = test_sd.get_dataset()
@@ -305,9 +310,13 @@ model = MODELS[args.model_name]
 model = model()
 
 # compile model
+
+#run_opts = RunOptions(report_tensor_allocations_upon_oom = True)
+
 model.compile(optimizer=K.optimizers.Adam(learning_rate=args.learning_rate),
               loss='categorical_crossentropy',
               metrics=metrics)
+#              options=run_opts)
 
 ## END scope
 
@@ -341,13 +350,17 @@ print('steps_per_epoch:', steps_per_epoch)
 # fit model
 # train_ds = train_ds.batch(2)
 
-audio, label = next(train_ds.as_numpy_iterator())
-print('audio shape:', audio.shape)
-print('label shape:', label.shape)
+# audio, label = next(train_ds.as_numpy_iterator())
+# print('audio shape:', audio.shape)
+# print('label shape:', label.shape)
 #
 # history = model.fit(train_ds,
 #                     steps_per_epoch=steps_per_epoch,
 #                     epochs=2)
+
+
+
+
 
 history = model.fit(train_ds,
                     steps_per_epoch=steps_per_epoch, # only for quick testing
