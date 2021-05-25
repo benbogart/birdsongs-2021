@@ -9,6 +9,7 @@ from azureml.core import Workspace, Dataset
 from tensorflow import keras as K
 from tensorflow.distribute import MirroredStrategy
 #from tensorflow.compat.v1 import RunOptions
+import tensorflow_addons as tfa
 
 from sklearn.preprocessing import LabelEncoder
 import json
@@ -26,18 +27,18 @@ def process_arguments():
 
     parser.add_argument('--data-path', type=str,
                         dest='data_path',
-                        default='../../', #local path for testing
+                        default='../../wav', #local path for testing
                         help='data folder mounting point')
 
     parser.add_argument('--test-data-path', type=str,
                         dest='test_data_path',
-                        default='../../', #local path for testing
+                        default='../../wav', #local path for testing
                         help='data folder mounting point')
 
     parser.add_argument('--sr', type=int,
                         dest='sr',
                         default=32000,
-                        help='sample rate of audio files')
+help='sample rate of audio files')
 
     parser.add_argument('--offline', dest='online', action='store_const',
                         const=False, default=True,
@@ -179,13 +180,30 @@ val_files = [os.path.join(args.data_path, name)
 test_files = [os.path.join(args.data_path, name)
                for name in data['test']['files']]
 
-print(train_files[:5])
+print('len(train_files)',len(train_files))
 
 # training labels will be in the dataset object
 # # get labels
 # train_labels = np.array(data['train']['encoded_labels'])
 # val_labels = np.array(data['val']['encoded_labels'])
 # test_labels = np.array(data['test']['encoded_labels'])
+
+# use label encoder
+
+# get class names
+
+
+classes = data['mapping']
+n_classes = len(classes)
+
+
+le =LabelEncoder()
+le.fit(classes)
+
+# transform labels
+train_labels = le.transform(data['train']['labels']).tolist()
+val_labels = le.transform(data['val']['labels']).tolist()
+test_labels = le.transform(data['test']['labels']).tolist()
 
 # print number of files in each split to log
 print('Num Train Files:', len(train_files))
@@ -198,11 +216,6 @@ print('Num Test Files:', len(test_files))
 # print('Num Test Labels:', len(test_labels))
 
 
-
-
-# # get class names
-# classes = data['mapping']
-# n_classes = len(classes)
 #
 # Parallelize for multiple gpus
 strategy = MirroredStrategy()
@@ -230,63 +243,97 @@ BATCH_SIZE = 16
 
 
 from dataset import SimpleDataset
-train_sd = SimpleDataset(os.path.join(args.data_path,'input/birdclef-2021/train_short_audio'),
-                         batch_size=BATCH_SIZE,
-                         files_list=train_files)
-train_ds = train_sd.get_dataset()
+# train_sd = SimpleDataset(os.path.join(args.data_path,'input/birdclef-2021/train_short_audio'),
+#                          name='train',
+#                          batch_size=BATCH_SIZE,
+#                          is_test=True,
+#                          files_list=train_files)
+# train_ds = train_sd.get_dataset()
 
+# train_sd = SimpleDataset(os.path.join(args.data_path,'input/birdclef-2021/train_short_audio'),
+#                        name='validation',
+#                        batch_size=BATCH_SIZE,
+#                        is_test=True,
+#                        files_list=train_files)
+# train_ds = train_sd.get_dataset()
+# if args.online:
+#     run.tag('Training', 'Dataset')
 
 val_sd = SimpleDataset(os.path.join(args.data_path,'input/birdclef-2021/train_short_audio'),
+                       name='validation',
                        batch_size=BATCH_SIZE,
-                       files_list=val_files)
+                       is_test=True,
+                       files_list=val_files,
+                       sr=sr)
 val_ds = val_sd.get_dataset()
+if args.online:
+    run.tag('Validation', 'Dataset')
 
 test_sd = SimpleDataset(os.path.join(args.data_path,'input/birdclef-2021/train_short_audio'),
+                        name='test',
                         batch_size=BATCH_SIZE,
                         is_test=True,
-                        files_list=test_files)
+                        files_list=test_files,
+                        sr=sr)
 test_ds = test_sd.get_dataset()
-
-print('ELEMENT SPEC:', train_ds.element_spec)
-print('train_sd.is_test', train_sd.is_test)
-print('val_sd.is_test', val_sd.is_test)
-print('test_sd.is_test', test_sd.is_test)
-
-# # Choose DataGenerator or AugDataGenerator
-# if args.augment_position or args.augment_pitch or args.augment_stretch:
-#     print('Creating train AugDataGenerator wtih pitch', args.augment_pitch,
-#           'stretch', args.augment_stretch)
-#     train_generator = AugDataGenerator(wav_paths=train_files, #[:32],
-#                                        labels=train_labels, #[:32],
-#                                        sr=sr,
-#                                        dt=dt,
-#                                        n_classes=len(classes),
-#                                        # audio_segment=args.augment_position,
-#                                        pitch_shift=args.augment_pitch,
-#                                        time_stretch=args.augment_stretch,
-#                                        multithread=args.multithread,
-#                                        batch_size=BATCH_SIZE*n_gpus)
-# else:
-#     print('Creating train DataGenerator')
-#     train_generator = DataGenerator(wav_paths=train_files,
-#                                     labels=train_labels,
-#                                     sr=sr,
-#                                     dt=dt,
-#                                     n_classes=len(classes),
-#                                     batch_size=BATCH_SIZE*n_gpus)
 #
+# print('ELEMENT SPEC:', train_ds.element_spec)
+# print('train_sd.is_test', train_sd.is_test)
+# print('val_sd.is_test', val_sd.is_test)
+# print('test_sd.is_test', test_sd.is_test)
+
+# Choose DataGenerator or AugDataGenerator
+if args.augment_position or args.augment_pitch or args.augment_stretch:
+    print('Creating train AugDataGenerator wtih pitch', args.augment_pitch,
+          'stretch', args.augment_stretch)
+    train_ds = AugDataGenerator(wav_paths=train_files, #[:32],
+                                       labels=train_labels, #[:32],
+                                       sr=sr,
+                                       dt=dt,
+                                       n_classes=len(classes),
+                                       # audio_segment=args.augment_position,
+                                       pitch_shift=args.augment_pitch,
+                                       time_stretch=args.augment_stretch,
+                                       multithread=args.multithread,
+                                       batch_size=BATCH_SIZE*n_gpus)
+else:
+    print('Creating train DataGenerator')
+    train_ds = DataGenerator(wav_paths=train_files,
+                                    labels=train_labels,
+                                    sr=sr,
+                                    dt=dt,
+                                    n_classes=len(classes),
+                                    batch_size=BATCH_SIZE*n_gpus)
+
+
+# print('Creating train DataGenerator')
+# train_ds = DataGenerator(wav_paths=train_files,
+#                                 labels=train_labels,
+#                                 sr=sr,
+#                                 dt=dt,
+#                                 n_classes=len(classes),
+#                                 batch_size=BATCH_SIZE*n_gpus,
+#                                 shuffle=False)
+if args.online:
+    run.tag('Training', 'Generator')
+
+
 # # Create Validation and Test Generators
 # print('Creating validation DataGenerator...')
-# val_generator = DataGenerator(wav_paths=val_files, #[:32],
+# val_ds = DataGenerator(wav_paths=val_files, #[:32],
 #                                 labels=val_labels, #[:32],
 #                                 sr=sr,
 #                                 dt=dt,
 #                                 n_classes=len(classes),
-#                                 batch_size=BATCH_SIZE*n_gpus)
+#                                 batch_size=BATCH_SIZE*n_gpus,
+#                                 shuffle=False)
+# if args.online:
+#     run.tag('Validation', 'Generator')
+
 #
 #
 # print('Creating test DataGenerator...')
-# test_generator = DataGenerator(wav_paths=test_files, #[:32],
+# test_ds = DataGenerator(wav_paths=test_files, #[:32],
 #                                 labels=test_labels, #[:32],
 #                                 sr=sr,
 #                                 dt=dt,
@@ -300,7 +347,9 @@ print('test_sd.is_test', test_sd.is_test)
 
 # metrics
 metrics = [
-    K.metrics.CategoricalAccuracy()
+    tfa.metrics.F1Score(num_classes=len(classes),
+                        average='micro'),
+    K.metrics.CategoricalAccuracy(),
 #    K.metrics.TopKCategoricalAccuracy(k=3, name='top_3_accuracy'),
 #    K.metrics.TopKCategoricalAccuracy(k=5, name='top_5_accuracy')
 ]
@@ -342,8 +391,8 @@ if args.online:
 
 # calculate steps per epoch
 
-steps_per_epoch = np.ceil(len(train_files) / BATCH_SIZE)
-validation_steps = np.ceil(len(val_files) / BATCH_SIZE)
+steps_per_epoch = np.floor(len(train_files) / BATCH_SIZE)
+validation_steps = np.floor(len(val_files) / BATCH_SIZE)
 
 print('steps_per_epoch:', steps_per_epoch)
 
@@ -363,9 +412,10 @@ print('steps_per_epoch:', steps_per_epoch)
 
 
 history = model.fit(train_ds,
-                    steps_per_epoch=steps_per_epoch, # only for quick testing
+                    # steps_per_epoch=steps_per_epoch, # only for quick testing
+                    # validation_split=0.2,  # does not work with dataset
                     validation_data=val_ds,
-                    validation_steps=validation_steps,
+                    # validation_steps=validation_steps,
                     epochs=args.epochs,
                     callbacks=callbacks)
 
