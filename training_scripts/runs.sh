@@ -10,10 +10,16 @@
 
 # python azure_create_resources.py --create-env
 #
-python azure_create_resources.py --upload-data
+# python azure_create_resources.py --upload-data
 #
-# python azure_create_resources.py --create-dataset --dataset-name birdsongs_10sec\
-#   --data-path /data/audio_10sec/
+# python azure_create_resources.py --create-dataset --dataset-name train_short_audio\
+#    --data-path /input/birdclef-2021
 #
 # python azure_create_resources.py --create-dataset --dataset-name birdsongs_npy\
 #   --data-path /data/npy/
+
+
+# Tests
+# python azure_train.py --model-name cnn1_audin_nmel_1 --test
+
+python azure_train.py --model-name construct_transfer1 --augment-position --epochs 100
