@@ -28,7 +28,7 @@ def process_arguments():
     parser.add_argument('--data-subset',
                         type=str,
                         dest='data_subset',
-                        default='kaggle_ogg',
+                        default='wav_short_audio',
                         help='the subset of the data to use [all, kaggle].')
 
     parser.add_argument('--augment-position',
@@ -63,16 +63,14 @@ print(args)
 # Load the stored workspace
 ws = Workspace.from_config()
 
-# Get the registered training dataset from azure
-# if args.data_subset.endswith('npy'):
-#     train_dataset = Dataset.get_by_name(ws, name='birdsongs_npy')
-# else:
-#     train_dataset = Dataset.get_by_name(ws, name='birdsongs_10sec')
+train_dataset = Dataset.get_by_name(ws, name=args.data_subset)
+val_test_dataset = Dataset.get_by_name(ws, name=args.data_subset)
 
-# set train dataset
-train_dataset = Dataset.get_by_name(ws, name='wav_short_audio')
-# get the validation dataset
-val_test_dataset = Dataset.get_by_name(ws, name='wav_short_audio')
+
+# # set train dataset
+# train_dataset = Dataset.get_by_name(ws, name='wav_short_audio')
+# # get the validation dataset
+# val_test_dataset = Dataset.get_by_name(ws, name='wav_short_audio')
 
 ## Get saved enviornment
 env = Environment.get(workspace=ws, name="birdsong-env-gpu")
