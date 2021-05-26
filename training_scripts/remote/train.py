@@ -27,17 +27,17 @@ def process_arguments():
 
     parser.add_argument('--data-path', type=str,
                         dest='data_path',
-                        default='../../wav', #local path for testing
+                        default='../../wav22k', #local path for testing
                         help='data folder mounting point')
 
     parser.add_argument('--test-data-path', type=str,
                         dest='test_data_path',
-                        default='../../wav', #local path for testing
+                        default='../../wav22k', #local path for testing
                         help='data folder mounting point')
 
     parser.add_argument('--sr', type=int,
                         dest='sr',
-                        default=32000,
+                        default=22050,
 help='sample rate of audio files')
 
     parser.add_argument('--offline', dest='online', action='store_const',
@@ -250,14 +250,13 @@ from dataset import SimpleDataset
 #                          files_list=train_files)
 # train_ds = train_sd.get_dataset()
 
-# train_sd = SimpleDataset(os.path.join(args.data_path,'input/birdclef-2021/train_short_audio'),
-#                        name='validation',
-#                        batch_size=BATCH_SIZE,
-#                        is_test=True,
-#                        files_list=train_files)
-# train_ds = train_sd.get_dataset()
-# if args.online:
-#     run.tag('Training', 'Dataset')
+train_sd = SimpleDataset(os.path.join(args.data_path,'input/birdclef-2021/train_short_audio'),
+                       name='train',
+                       batch_size=BATCH_SIZE,
+                       files_list=train_files)
+train_ds = train_sd.get_dataset()
+if args.online:
+    run.tag('Training', 'Dataset')
 
 val_sd = SimpleDataset(os.path.join(args.data_path,'input/birdclef-2021/train_short_audio'),
                        name='validation',
@@ -283,28 +282,29 @@ test_ds = test_sd.get_dataset()
 # print('test_sd.is_test', test_sd.is_test)
 
 # Choose DataGenerator or AugDataGenerator
-if args.augment_position or args.augment_pitch or args.augment_stretch:
-    print('Creating train AugDataGenerator wtih pitch', args.augment_pitch,
-          'stretch', args.augment_stretch)
-    train_ds = AugDataGenerator(wav_paths=train_files, #[:32],
-                                       labels=train_labels, #[:32],
-                                       sr=sr,
-                                       dt=dt,
-                                       n_classes=len(classes),
-                                       # audio_segment=args.augment_position,
-                                       pitch_shift=args.augment_pitch,
-                                       time_stretch=args.augment_stretch,
-                                       multithread=args.multithread,
-                                       batch_size=BATCH_SIZE*n_gpus)
-else:
-    print('Creating train DataGenerator')
-    train_ds = DataGenerator(wav_paths=train_files,
-                                    labels=train_labels,
-                                    sr=sr,
-                                    dt=dt,
-                                    n_classes=len(classes),
-                                    batch_size=BATCH_SIZE*n_gpus)
-
+# if args.augment_position or args.augment_pitch or args.augment_stretch:
+#     print('Creating train AugDataGenerator wtih pitch', args.augment_pitch,
+#           'stretch', args.augment_stretch)
+#     train_ds = AugDataGenerator(wav_paths=train_files, #[:32],
+#                                        labels=train_labels, #[:32],
+#                                        sr=sr,
+#                                        dt=dt,
+#                                        n_classes=len(classes),
+#                                        # audio_segment=args.augment_position,
+#                                        pitch_shift=args.augment_pitch,
+#                                        time_stretch=args.augment_stretch,
+#                                        multithread=args.multithread,
+#                                        batch_size=BATCH_SIZE*n_gpus)
+# else:
+#     print('Creating train DataGenerator')
+#     train_ds = DataGenerator(wav_paths=train_files,
+#                                     labels=train_labels,
+#                                     sr=sr,
+#                                     dt=dt,
+#                                     n_classes=len(classes),
+#                                     batch_size=BATCH_SIZE*n_gpus)
+# if args.online:
+#     run.tag('Training', 'Generator')
 
 # print('Creating train DataGenerator')
 # train_ds = DataGenerator(wav_paths=train_files,
@@ -314,8 +314,7 @@ else:
 #                                 n_classes=len(classes),
 #                                 batch_size=BATCH_SIZE*n_gpus,
 #                                 shuffle=False)
-if args.online:
-    run.tag('Training', 'Generator')
+
 
 
 # # Create Validation and Test Generators
@@ -373,8 +372,8 @@ model.compile(optimizer=K.optimizers.Adam(learning_rate=args.learning_rate),
 model.summary()
 #
 # callbacks
-r_lr = K.callbacks.ReduceLROnPlateau(patience=5, factor=0.2)
-cb = K.callbacks.EarlyStopping(patience=10)
+r_lr = K.callbacks.ReduceLROnPlateau(patience=2, factor=0.2)
+cb = K.callbacks.EarlyStopping(patience=4)
 mc = K.callbacks.ModelCheckpoint(filepath=f'outputs/{args.model_name}-{runid}.h5',
                                  save_best_only=True,
                                  save_weights_only=True)
