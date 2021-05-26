@@ -39,15 +39,15 @@ class SimpleDataset() :
         # can we load a partial file??
         audio = tf.io.read_file(file_path)
         #audio = tfio.audio.decode_vorbis(audio)
-        audio, sr = tf.audio.decode_wav(audio, dtype=tf.int64)
+        audio, sr = tf.audio.decode_wav(audio)
 
-        sr = tf.constant(sr, dtype=tf.int64)
-        ssr = tf.constant(self.sr, dtype=tf.int64)
-        audio = tfio.audio.resample(audio, sr, self.sr)
+        # sr = tf.constant(sr, dtype=tf.int64)
+        # ssr = tf.constant(self.sr, dtype=tf.int64)
+        # audio = tfio.audio.resample(audio, sr, self.sr)
         # Assume all files have been resampled to 32khz
         #sr = 32000
         seconds = 10
-        samples = ssr * seconds
+        samples = sr * seconds
 
         # crop to first 10 seconds
         audio = audio[:samples]
@@ -99,9 +99,9 @@ class SimpleDataset() :
         labels_ds = file_paths_ds.map(self.get_labels_from_path, num_parallel_calls=AUTOTUNE)
 
         # setup dataset
-        #if not self.is_test:
+        if not self.is_test:
             # shuffle if not test set
-        #    labels_ds = labels_ds.shuffle(len(self.files_list), reshuffle_each_iteration=True)
+            labels_ds = labels_ds.shuffle(len(self.files_list), reshuffle_each_iteration=True)
 
 
         ds = labels_ds.map(self.load_audio, num_parallel_calls=AUTOTUNE)
