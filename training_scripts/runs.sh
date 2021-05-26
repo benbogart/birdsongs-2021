@@ -22,4 +22,12 @@
 # Tests
 # python azure_train.py --model-name cnn1_audin_nmel_1 --test
 
-python azure_train.py --model-name construct_transfer1 --augment-position --epochs 100
+# python azure_train.py --model-name construct_transfer1 --augment-position
+# python azure_train.py --model-name construct_transfer1 --augment-position --sr 22050
+
+
+# python azure_train.py --model-name construct_transfer1 --augment-position\
+#  --data-subset wav22k_short_audio --test
+
+ python azure_train.py --model-name construct_transfer1 \
+  --data-subset wav22k_short_audio
