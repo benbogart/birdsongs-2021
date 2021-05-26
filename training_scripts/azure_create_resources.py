@@ -118,8 +118,8 @@ def create_env(ws):
     # define packages for image
     cd = CondaDependencies.create(pip_packages=['azureml-dataset-runtime[pandas,fuse]',
                                                 'azureml-defaults',
-                                                'tensorflow==2.4.0', #'tensorflow==2.4.0',
-                                                'tensorflow-io==0.18.0', #'tensorflow-io==0.17.1',
+                                                'tensorflow==2.4.0', #'tensorflow==2.5.0',
+                                                'tensorflow-io==0.17.1', # 'tensorflow-io==0.18.0', 
                                                 'tensorflow-addons==0.13.0',
                                                 'Pillow',
                                                 'sklearn',
