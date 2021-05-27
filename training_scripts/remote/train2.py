@@ -151,8 +151,10 @@ else:
 
 # get file lists for train, val, test
 df = pd.read_pickle(os.path.join(args.data_path, 'soundscapes.pkl'))
-files = df['row_id'].map(lambda x: os.path.join(args.data_path, x + '.wav')).tolist()
-labels = df['label'].tolist()
+
+df_withbird = df[df['birds'] != 'nocall']
+files = df_withbird['row_id'].map(lambda x: os.path.join(args.data_path, x + '.wav')).tolist()
+labels = df_withbird['label'].tolist()
 
 print('len(files)',len(files))
 
