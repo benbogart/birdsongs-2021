@@ -488,6 +488,19 @@ def construct_transfer1():
 
     return model
 
+def construct_transfer2():
+    model = construct_milsed_7block_dense()
+
+    x = model.layers[-2].output
+
+    output = K.layers.Dense(397, activation='sigmoid', name='prediction')(x)
+
+    model = K.Model(inputs=model.input, outputs=output)
+
+    model.load_weights('construct_transfer1-birdsongs_1621992754_58b003b6.h5')
+
+    return model
+
 MODELS={
     'cnn1_audin_nmel_1':construct_cnn1_audin_nmel_1,
     'cnn1_audin_nmel_2':construct_cnn1_audin_nmel_2,
@@ -516,6 +529,7 @@ MODELS={
     'milsed_7block_dense_drp_2':construct_milsed_7block_dense_drp_2,
     'milsed_7block_dense_drp_3':construct_milsed_7block_dense_drp_3,
     'milsed_7block_dense_drp_4':construct_milsed_7block_dense_drp_4,
-    'construct_transfer1':construct_transfer1
+    'construct_transfer1':construct_transfer1,
+    'construct_transfer2':construct_transfer2
 
     }

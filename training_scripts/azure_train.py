@@ -53,6 +53,11 @@ def process_arguments():
     parser.add_argument('--multithread', dest='multithread', action='store_const',
                         const=True, default=False,
                         help='Use test expiriment')
+    parser.add_argument('--train-script',
+                        type=str,
+                        dest='train_script',
+                        default='train.py',
+                        help='the name of the training script')
 
     args = parser.parse_args()
     return args
@@ -116,7 +121,7 @@ if args.multithread:
 # setup the run details
 script_path = 'remote'
 src = ScriptRunConfig(source_directory=script_path,
-                      script='train.py',
+                      script=args.train_script,
                       arguments=azure_args,
                       compute_target=compute_target,
                       environment=env)

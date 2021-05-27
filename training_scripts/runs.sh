@@ -29,5 +29,8 @@
 # python azure_train.py --model-name construct_transfer1 --augment-position\
 #  --data-subset wav22k_short_audio --test
 
- python azure_train.py --model-name construct_transfer1 \
-  --data-subset wav22k_short_audio
+ # python azure_train.py --model-name construct_transfer1 \
+ #  --data-subset wav22k_short_audio
+
+  python azure_train.py --model-name construct_transfer2 \
+   --data-subset sswav5sec22k --train-script train2.py --test
