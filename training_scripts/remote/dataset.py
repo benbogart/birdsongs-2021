@@ -129,6 +129,9 @@ class SoundScapeDataset() :
         self.name = name
         self.sr = sr
 
+        # Placeholders
+        self.noise_paths_ds = None
+
     def get_labels_from_path(self, filename):
 
         label = tf.strings.split(filename, sep='/')[-2]
@@ -142,23 +145,16 @@ class SoundScapeDataset() :
         # onehot_label = tf.reshape(onehot_label, [1, -1])
         return filename, onehot_label
 
-    def load_audio(self, file_path, label):
-
+    def load_audio(self, file_path, noise_path=False):
 
         # can we load a partial file??
         audio = tf.io.read_file(file_path)
-        #audio = tfio.audio.decode_vorbis(audio)
         audio, sr = tf.audio.decode_wav(audio)
 
-        # sr = tf.constant(sr, dtype=tf.int64)
-        # ssr = tf.constant(self.sr, dtype=tf.int64)
-        # audio = tfio.audio.resample(audio, sr, self.sr)
-        # Assume all files have been resampled to 32khz
-        #sr = 32000
-        seconds = 10
+        seconds = 5
         samples = sr * seconds
 
-        # crop to first 10 seconds
+        # crop to first 15 seconds
         audio = audio[:samples]
 
         # pad it out if its shorter
@@ -166,7 +162,15 @@ class SoundScapeDataset() :
         paddings = tf.stack([[0, back_pad], [0,0]])
         audio = tf.pad(audio, paddings)
 
-        return audio, label #, file_path
+        if noise_path:
+            noise = tf.io.read_file(noise_path)
+            noise, sr = tf.audio.decode_wav(noise)
+
+            gain0 = tf.random.uniform(, 0.2, 0.5)
+
+            audio = gain0 * noise + (1 - gain0) * audio
+
+        return audio #, file_path
 
     def get_species_enum_table(self):
         # Create a static enum for the species set.
@@ -184,50 +188,79 @@ class SoundScapeDataset() :
                                                 tf.constant(range(self.nspecies))),
             default_value=-1)
 
-        # reverse_species_table = tf.lookup.StaticHashTable(
-        #     tf.lookup.KeyValueTensorInitializer(tf.constant(range(self.nspecies)),
-        #                                         tf.constant(species_list)),
-        #     default_value=-1)
+        return species_table
 
-        return species_table #, reverse_species_table
+    def process_examples(self, ex0, ex1=None, is_train=True):
+        if ex1 is not None:
+            # Here we combine two examples.
+            labels = tf.stack([ex0['label'], ex1['label']],
+                                   axis=1)
+            labels_enum = tf.stack([self.species_enum_table.lookup(ex0['label']),
+                                    self.species_enum_table.lookup(ex1['label'])],
+                                   axis=1)
+
+            # This applies a random gain to each member of the batch separately.
+            gain0 = tf.random.uniform([self.batch_size, 1, 1], 0.2, 0.5)
+            merged_audio = gain0 * ex0['audio'] + (1 - gain0) * ex1['audio']
+        else:
+            labels = ex0['label'][:, tf.newaxis]
+            labels_enum = self.species_enum_table.lookup(ex0['label'])[:, tf.newaxis]
+            merged_audio = ex0['audio']
+
+    def add_noise(self, audio_path, noise_path):
+
+        def read
+        noise_file = self.noise_paths_ds.take(1)
+        noise = tf.io.read_file(noise_file)
+        noise, sr = tf.audio.decode_wav(noise)
+
+        # This applies a random gain to each member of the batch separately.
+        gain0 = tf.random.uniform([], 0.2, 0.5)
+        merged_audio = gain0 * noise + (1 - gain0) * audio
+
+        return merged_audio
 
     def get_dataset(self):
-        #self.species_enum_table = self.get_species_enum_table()
-
-        # file_list = self.df['row_id'].map(lambda x: x+'.wav').tolist()
 
         file_paths_ds = tf.data.Dataset.from_tensor_slices(self.files_list)
-        # else:
-        #     # if no list of filenames use glob
-        #     print('creating from path')
-        #     file_paths_ds = tf.data.Dataset.list_files(os.path.join(self.data_path,'*/*.wav'),
-        #                                            shuffle=False)
 
         labels_ds = tf.data.Dataset.from_tensor_slices(self.labels_list)
 
+        if self.is_train:
+            # get a noise_paths_ds with the same length as files_list
+            noise_paths_ds = tf.data.Dataset.from_tensor_slices(self.noise_files)
+            noise_paths_sd = noise_paths_ds.repeat().shuffle(1024)
+            noise_paths_ds = noise_paths_ds.take(len(self.files_list))
+
+            paths_zip_ds = tf.data.Dataset.zip(file_paths_ds, noise_paths_ds)
+
+            def add_noise
+
+
+
         ds = tf.data.Dataset.zip((file_paths_ds, labels_ds))
 
-        # add labels
-        # labels_ds = file_paths_ds.map(self.get_labels_from_path, num_parallel_calls=AUTOTUNE)
-        #
-        # # setup dataset
-        # if not self.is_test:
-            # shuffle if not test set
         ds = ds.shuffle(len(self.files_list), reshuffle_each_iteration=True)
-        #
-        #
+
         ds = ds.map(self.load_audio, num_parallel_calls=AUTOTUNE)
-        #
-        # # ds.cache('./cache/'+self.name) # is this overwriting the same file?
-        #
-        #
+
         ds = ds.batch(self.batch_size)
-        # print('Batch Size set to ', self.batch_size)
-        # #ds = ds.batch(2)
-        #
+
         ds = ds.prefetch(tf.data.experimental.AUTOTUNE)
 
-        return ds
+class CombinedDataset():
+    def __init__(self, data_path, name, files_list, labels_list,
+                noise_files, batch_size=32, is_test=False, sr=32000):
+        self.data_path = data_path
+        self.files_list = files_list
+        self.labels_list = labels_list
+        self.noise_files = noise_files
+        self.is_test = is_test
+        self.batch_size = batch_size
+        self.name = name
+        self.sr = sr
+
+
 
 if __name__ == '__main__':
     print("Testing SoundScapeDataset")
