@@ -17,9 +17,10 @@ import json
 import subprocess
 
 # custom
-from DataGenerator import DataGenerator, AugDataGenerator
+# from DataGenerator import DataGenerator, AugDataGenerator
 from LogToAzure import LogToAzure
 from models import MODELS
+import tensorflow as tf
 
 
 def process_arguments():
@@ -28,18 +29,23 @@ def process_arguments():
 
     parser.add_argument('--data-path', type=str,
                         dest='data_path',
-                        default='../../sswav5sec', #local path for testing
-                        help='data folder mounting point')
+                        default='../../wav', #local path for testing
+                        help='train data folder mounting point')
 
     parser.add_argument('--test-data-path', type=str,
                         dest='test_data_path',
                         default='../../sswav5sec22k', #local path for testing
                         help='data folder mounting point')
 
+    parser.add_argument('--noise-data-path', type=str,
+                        dest='noise_data_path',
+                        default='../../sswav5sec', #local path for testing
+                        help='noise data folder mounting point')
+
     parser.add_argument('--sr', type=int,
                         dest='sr',
-                        default=22050,
-help='sample rate of audio files')
+                        default=16000,
+                        help='sample rate of audio files')
 
     parser.add_argument('--offline', dest='online', action='store_const',
                         const=False, default=True,
@@ -47,7 +53,7 @@ help='sample rate of audio files')
 
     parser.add_argument('--model-name', type=str,
                          dest='model_name',
-                         default='construct_transfer3',
+                         default='vggish_time_dist_1',
                          help='name of model to build')
 
     parser.add_argument('--data-subset',
@@ -112,7 +118,7 @@ os.makedirs('outputs', exist_ok = True)
 
 # set variables
 sr = args.sr # sample rate
-dt = 10 # to second
+dt = 5 # to second
 
 # build data_subset_id with augmentation info
 data_subset = args.data_subset
@@ -150,47 +156,66 @@ else:
     runid = 'offline'
 
 # get file lists for train, val, test
-df = pd.read_pickle(os.path.join(args.data_path, 'soundscapes.pkl'))
 
-df_withbird = df[df['birds'] != 'nocall']
-files = df_withbird['row_id'].map(lambda x: os.path.join(args.data_path, x + '.wav')).tolist()
-labels = df_withbird['label'].tolist()
+label_file = 'data_split_single_label_tv.json'
 
-print('len(files)',len(files))
+with open(os.path.join(args.data_path, 'input/resources', label_file), 'r') as f:
+    data =  json.load(f)
 
-# print(files)
+#     # get file lists for train, val, test
+train_files = [os.path.join(args.data_path, name)
+           for name in data['train']['files']]
+val_files = [os.path.join(args.data_path, name)
+           for name in data['val']['files']]
+
+print('Num Training Files:', len(train_files))
+print('Num Validation Files:', len(val_files))
+
+classes = data['mapping']
+n_classes = len(classes)
+
+# print('classes: ', classes)
+le =LabelEncoder()
+le.fit(classes)
+
+# transform labels
+train_labels = le.transform(data['train']['labels']).tolist()
+val_labels = le.transform(data['val']['labels']).tolist()
+
+# print(train_labels)
+# select files from soundscapes without birds.
+
+print(args.noise_data_path)
+ssdf = pd.read_csv(os.path.join(args.noise_data_path, 'train_soundscape_labels.csv'))
+
+ssdf_filtered = ssdf[ssdf['birds'] == 'nocall']
+noise_files = [os.path.join(args.noise_data_path, fid + '.wav') for fid in ssdf_filtered['row_id']]
+
+
 # Batch size for generators
-BATCH_SIZE = 16
-
+BATCH_SIZE = 1
 
 #####################
 ## Create Datasets ##
 #####################
 
+from dataset import CombinedDatasetFullAudio
 
-from dataset import SoundScapeDataset
+cd = CombinedDatasetFullAudio(train_files, train_labels, noise_files,
+                     batch_size=BATCH_SIZE, is_train=True)
+train_ds = cd.get_dataset()
 
-sd = SoundScapeDataset(os.path.join(args.data_path),
-                       name='train',
-                       batch_size=BATCH_SIZE,
-                       files_list=files,
-                       labels_list=labels)
-ds = sd.get_dataset()
-if args.online:
-    run.tag('Training', 'Dataset')
+# is this the right test????  Should be static but should it have noise??
+cd = CombinedDatasetFullAudio(val_files, val_labels,
+                     batch_size=BATCH_SIZE, is_train=False)
+val_ds = cd.get_dataset()
 
-DATASET_SIZE = len(files)
-print('DATASET_SIZE', DATASET_SIZE)
+print('Train Dataset Cardinality:', tf.data.experimental.cardinality(train_ds).numpy())
+print('Validation Dataset Cardinality:', tf.data.experimental.cardinality(val_ds).numpy())
 
-train_size = int(0.9 * DATASET_SIZE / BATCH_SIZE)
-# val_size = int(0.1 * DATASET_SIZE)
 
-print('train_size', train_size)
-
-train_ds = ds.take(train_size)
-val_ds = ds.skip(train_size)
-
-# print(next(val_ds.as_numpy_iterator()))
+# DATASET_SIZE = len(files)
+# print('DATASET_SIZE', DATASET_SIZE)
 
 # metrics
 metrics = [
@@ -204,6 +229,7 @@ metrics = [
 # Construct model
 model = MODELS[args.model_name]
 model = model()
+
 # compile model
 
 #run_opts = RunOptions(report_tensor_allocations_upon_oom = True)
@@ -235,25 +261,8 @@ if args.online:
     callbacks.append(LogToAzure(run))
 
 
-# calculate steps per epoch
-
-
 
 # fit model
-# train_ds = train_ds.batch(2)
-
-# audio, label = next(train_ds.as_numpy_iterator())
-# print('audio shape:', audio.shape)
-# print('label shape:', label.shape)
-#
-# history = model.fit(train_ds,
-#                     steps_per_epoch=steps_per_epoch,
-#                     epochs=2)
-
-
-
-
-
 history = model.fit(train_ds,
                     # steps_per_epoch=steps_per_epoch, # only for quick testing
                     # validation_split=0.2,  # does not work with dataset
@@ -269,40 +278,6 @@ with open(f'outputs/{args.model_name}-{runid}.history', 'wb') as f:
     pickle.dump(history.history, f)
 
 
-# print('Loading best model for testing...')
-# model.load_weights(f'outputs/{args.model_name}-{runid}.h5')
-#
-# # save predictions
-# # do this first so the generator starts from the beginning
-# print('generating predictions on test set...')
-# test_pred = model.predict(test_ds)
-#
-# print('saving test predictions...')
-# with open(f'outputs/{args.model_name}-{runid}-test_predictions.pkl', 'wb') as f:
-#     pickle.dump(test_pred, f)
-#
-#
-# # evaluate test set
-# print('evaluating model on test set...')
-# model_val = model.evaluate(test_ds)
-#
-# print('model_val len',len(model_val))
-# print('metrics len',len(metrics))
-
-# build test metric dict
-# test_metrics = {}
-# for i, m in enumerate(metrics):
-#     print(f'test_{m.name}: {model_val[i+1]}')
-#     test_metrics['test_'+m.name] = model_val[i+1]
-#     if args.online:
-#         print('logging metrics...')
-#         run.log('test_'+m.name, np.float(model_val[i+1]))
-
-# # save test metrics
-# print('Saving test metrics...')
-# os.makedirs('outputs', exist_ok=True)
-# with open(f'outputs/{args.model_name}-{runid}-test_metrics.pkl', 'wb') as f:
-#     pickle.dump(test_metrics, f)
 
 
 print('Done!')
