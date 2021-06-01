@@ -473,6 +473,67 @@ def _construct_milsed_block(num_blocks, dropout_rate = False):
 
     return model
 
+def _construct_blocks(num_blocks, dropout_rate = False):
+
+    sample_rate = 32000
+    input_shape = (sample_rate * 5, 1) # mono 10 seconds at 22050hz
+    'n_mels'
+    n_fft = 2048 # frame size
+    hop_length = 256
+    n_mels=256
+    mel_f_min=0.0
+    mel_f_max=None
+    return_decibel=True
+    model = K.Sequential()
+    composed_melgram_layer = \
+        kapre.composed.get_melspectrogram_layer(input_shape=input_shape,
+                                                sample_rate=sample_rate,
+                                                n_fft=n_fft,
+                                                n_mels=n_mels,
+                                                mel_f_min=mel_f_min,
+                                                mel_f_max=mel_f_max,
+                                                return_decibel=return_decibel)
+
+    # decompose the layers the model can be saved
+    for layer in composed_melgram_layer.layers:
+        model.add(layer)
+
+    model.add(K.layers.BatchNormalization())
+
+    # add blocks
+    n_filters = 16
+    for block in range(num_blocks):
+        model.add(K.layers.Convolution2D(n_filters, (3, 3),
+                                       padding='same',
+                                       activation='relu',
+                                       kernel_initializer='he_normal'))
+        model.add(K.layers.BatchNormalization())
+        model.add(K.layers.Convolution2D(n_filters, (3, 3),
+                                       padding='same',
+                                       activation='relu',
+                                       kernel_initializer='he_normal'))
+        model.add(K.layers.BatchNormalization())
+        model.add(K.layers.MaxPooling2D((2,2), padding='valid'))
+
+        # double the number of filters for the next block
+        n_filters *= 2
+
+    model.add(K.layers.GlobalMaxPooling2D())
+
+    model.add(K.layers.Dense(1028, activation='relu'))
+    if dropout_rate:
+        model.add(K.layers.Dropout(dropout_rate))
+
+    # model.add(K.layers.Dense(512, activation='relu'))
+    # if dropout_rate:
+    #     model.add(K.layers.Dropout(dropout_rate))
+
+    model.add(K.layers.Dense(397, activation='sigmoid'))
+
+    return model
+
+
+
 def construct_transfer1():
     model = construct_milsed_7block_dense()
     model.load_weights('milsed_7block_dense-birdsongs_2_1618704934_e5b73727.h5')
@@ -500,6 +561,43 @@ def construct_transfer2():
     model.load_weights('construct_transfer1-birdsongs_1621992754_58b003b6.h5')
 
     return model
+
+def construct_transfer3(weight_path):
+    model = _construct_blocks(8, dropout_rate=0.2)
+
+    model.load_weights(weight_path)
+
+    x = model.layers[-2].output
+
+    output = K.layers.Dense(397, activation='sigmoid', name='prediction')(x)
+
+    model = K.Model(inputs=model.input, outputs=output)
+
+    for layer in model.layers[:-1]:
+        layer.trainable = False
+
+    return model
+
+def vggish_time_dist_1():
+
+    from autopool import AutoPool1D
+
+    inputs = K.Input(shape=(None, 128)) #(time, embedding)
+
+    dense = K.layers.Dense(128)
+    x = K.layers.TimeDistributed(dense)(inputs)
+
+    #x = tf.keras.layers.GlobalAveragePooling1D()(x)
+
+    x = AutoPool1D(axis=1)(x)
+
+    x = K.layers.Dense(397, activation='sigmoid', name='output')(x)
+
+    model = K.Model(inputs, x)
+
+    return model
+
+
 
 MODELS={
     'cnn1_audin_nmel_1':construct_cnn1_audin_nmel_1,
@@ -529,7 +627,10 @@ MODELS={
     'milsed_7block_dense_drp_2':construct_milsed_7block_dense_drp_2,
     'milsed_7block_dense_drp_3':construct_milsed_7block_dense_drp_3,
     'milsed_7block_dense_drp_4':construct_milsed_7block_dense_drp_4,
+    '_construct_blocks':_construct_blocks,
     'construct_transfer1':construct_transfer1,
-    'construct_transfer2':construct_transfer2
+    'construct_transfer2':construct_transfer2,
+    'construct_transfer3':construct_transfer3,
+    'vggish_time_dist_1':vggish_time_dist_1
 
     }
