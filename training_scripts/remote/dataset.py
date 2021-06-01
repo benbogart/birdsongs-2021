@@ -162,14 +162,6 @@ class SoundScapeDataset() :
         paddings = tf.stack([[0, back_pad], [0,0]])
         audio = tf.pad(audio, paddings)
 
-        if noise_path:
-            noise = tf.io.read_file(noise_path)
-            noise, sr = tf.audio.decode_wav(noise)
-
-            gain0 = tf.random.uniform(, 0.2, 0.5)
-
-            audio = gain0 * noise + (1 - gain0) * audio
-
         return audio #, file_path
 
     def get_species_enum_table(self):
@@ -207,36 +199,11 @@ class SoundScapeDataset() :
             labels_enum = self.species_enum_table.lookup(ex0['label'])[:, tf.newaxis]
             merged_audio = ex0['audio']
 
-    def add_noise(self, audio_path, noise_path):
-
-        def read
-        noise_file = self.noise_paths_ds.take(1)
-        noise = tf.io.read_file(noise_file)
-        noise, sr = tf.audio.decode_wav(noise)
-
-        # This applies a random gain to each member of the batch separately.
-        gain0 = tf.random.uniform([], 0.2, 0.5)
-        merged_audio = gain0 * noise + (1 - gain0) * audio
-
-        return merged_audio
-
     def get_dataset(self):
 
         file_paths_ds = tf.data.Dataset.from_tensor_slices(self.files_list)
 
         labels_ds = tf.data.Dataset.from_tensor_slices(self.labels_list)
-
-        if self.is_train:
-            # get a noise_paths_ds with the same length as files_list
-            noise_paths_ds = tf.data.Dataset.from_tensor_slices(self.noise_files)
-            noise_paths_sd = noise_paths_ds.repeat().shuffle(1024)
-            noise_paths_ds = noise_paths_ds.take(len(self.files_list))
-
-            paths_zip_ds = tf.data.Dataset.zip(file_paths_ds, noise_paths_ds)
-
-            def add_noise
-
-
 
         ds = tf.data.Dataset.zip((file_paths_ds, labels_ds))
 
@@ -248,118 +215,298 @@ class SoundScapeDataset() :
 
         ds = ds.prefetch(tf.data.experimental.AUTOTUNE)
 
+        return ds
+
+
 class CombinedDataset():
-    def __init__(self, data_path, name, files_list, labels_list,
-                noise_files, batch_size=32, is_test=False, sr=32000):
-        self.data_path = data_path
+    def __init__(self, files_list, labels_list,
+                noise_files=None, batch_size=32, is_train=None, sr=32000):
         self.files_list = files_list
         self.labels_list = labels_list
         self.noise_files = noise_files
-        self.is_test = is_test
+        self.is_train = is_train
         self.batch_size = batch_size
-        self.name = name
         self.sr = sr
 
+    def get_labels_from_path(self, filename):
+
+        label = tf.strings.split(filename, sep='/')[-2]
+
+        label_enum = self.species_enum_table.lookup(label)
+
+        onehot_label = tf.one_hot(label_enum,
+                                 self.nspecies)
+
+        # onehot_label = tf.reshape(onehot_label, [1, -1])
+        return filename, onehot_label
+
+    def load_audio(self, file_path, label, noise_path=None):
+
+        # can we load a partial file??
+        audio = tf.io.read_file(file_path)
+        audio, sr = tf.audio.decode_wav(audio)
+
+        seconds = 5
+        samples = sr * seconds
+
+        # crop to first 15 seconds
+        audio = audio[:samples]
+
+        # pad it out if its shorter
+        back_pad = samples - tf.shape(audio)[0]
+        paddings = tf.stack([[0, back_pad], [0,0]])
+        audio = tf.pad(audio, paddings)
+
+        # gain0 = 0
+
+        print(noise_path)
+
+        if noise_path is not None:
+            noise = tf.io.read_file(noise_path)
+            noise, sr = tf.audio.decode_wav(noise)
+
+            gain0 = tf.random.uniform([], 0.6, 0.8)
+
+            audio = gain0 * noise + (1 - gain0) * audio
+
+        else:
+            noise_path = 'none'
+        return audio, label #, gain0 #, file_path
 
 
-if __name__ == '__main__':
-    print("Testing SoundScapeDataset")
-    print('-'*100)
+    def get_dataset(self):
+
+        file_paths_ds = tf.data.Dataset.from_tensor_slices(self.files_list)
+
+        onehot_label = tf.one_hot(self.labels_list, 397) #n species
+        labels_ds = tf.data.Dataset.from_tensor_slices(onehot_label)
+
+        if self.is_train == True:
+            # get a noise_paths_ds with the same length as files_list
+            noise_paths_ds = tf.data.Dataset.from_tensor_slices(self.noise_files)
+            noise_paths_ds = noise_paths_ds.repeat().shuffle(1024)
+
+            paths_zip_ds = tf.data.Dataset.zip((file_paths_ds, labels_ds, noise_paths_ds))
+            paths_zip_ds = paths_zip_ds.shuffle(len(self.files_list), reshuffle_each_iteration=True)
+
+        else:
+
+            paths_zip_ds = tf.data.Dataset.zip((file_paths_ds, labels_ds))
+
+        ds = paths_zip_ds.map(self.load_audio, num_parallel_calls=AUTOTUNE)
+
+        ds = ds.batch(self.batch_size)
+
+        ds = ds.prefetch(tf.data.experimental.AUTOTUNE)
+
+        return ds
+
+class CombinedDatasetFullAudio():
+    def __init__(self, files_list, labels_list,
+                noise_files=None, batch_size=32, is_train=None, sr=32000):
+        self.files_list = files_list
+        self.labels_list = labels_list
+        self.noise_files = noise_files
+        self.is_train = is_train
+        self.batch_size = batch_size
+        self.sr = sr
+
+        self.vggish = self.load_vggish()
+
+    def load_vggish(self):
+        return tf.saved_model.load('vggish_1')
 
 
-    DATA_PATH = '../../sswav5sec22k'
-    BATCH_SIZE= 2
+    def get_labels_from_path(self, filename):
 
-    df = pd.read_pickle('../../sswav5sec22k/soundscapes.pkl')
-    files = df['row_id'].map(lambda x: os.path.join(DATA_PATH, x+'.wav')).tolist()
-    train_labels = df['label'].tolist()
+        label = tf.strings.split(filename, sep='/')[-2]
 
-    # print(train_files)
+        label_enum = self.species_enum_table.lookup(label)
 
-    sd = SoundScapeDataset('../../sswav5sec22k',
-                       name='train',
-                       batch_size=BATCH_SIZE,
-                       files_list=files,
-                       labels_list=train_labels,
-                       is_test=True)
+        onehot_label = tf.one_hot(label_enum,
+                                 self.nspecies)
+
+        # onehot_label = tf.reshape(onehot_label, [1, -1])
+        return filename, onehot_label
+
+    def load_audio(self, file_path, label, noise_path=None):
+
+        # can we load a partial file??
+        audio = tf.io.read_file(file_path)
+        audio, sr = tf.audio.decode_wav(audio)
+
+        seconds = 5
+        samples = sr * seconds
+
+        # crop to first 5 seconds
+        audio = audio[:samples]
+
+        # pad it out if its shorter
+        back_pad = samples - tf.shape(audio)[0]
+        paddings = tf.stack([[0, back_pad], [0,0]])
+        audio = tf.pad(audio, paddings)
+
+        # gain0 = 0
+
+#         print(noise_path)
+
+        if noise_path is not None:
+            noise = tf.io.read_file(noise_path)
+            noise, sr = tf.audio.decode_wav(noise)
+
+            gain0 = tf.random.uniform([], 0.3, 0.6)
 
 
-    ds = sd.get_dataset()
+            audio = gain0 * noise + (1 - gain0) * audio
 
-    DATASET_SIZE = len(files)
+        else:
+            noise_path = 'none'
+        return audio, label #, gain0 #, file_path
 
-    train_size = int(0.9 * DATASET_SIZE / BATCH_SIZE)
-    val_size = int(0.1 * DATASET_SIZE / BATCH_SIZE)
 
-    train_ds = ds.take(train_size)
-    val_ds = ds.skip(train_size)
+    def get_vggish_embeding(self, file_path, label):
+        # can we load a partial file??
+        audio = tf.io.read_file(file_path)
+        audio, sr = tf.audio.decode_wav(audio)
+        audio = tf.reshape(audio, [-1])
 
-    train_iter = train_ds.as_numpy_iterator()
-    val_ds = val_ds.as_numpy_iterator()
+        # cut to 7 seconds max
+        audio = audio[:sr*7]
 
-    print('train', next(train_iter))
-    print('validation', next(val_ds))
-    print('printed iteration')
-# if __name__ == '__main__2':
-#     print("Testing SimpleDataset")
+        if sr != 16000:
+            rate_in = tf.cast(sr, tf.int64, name=None)
+            rate_out = 16000
+
+            audio = tfio.audio.resample(audio, rate_in, rate_out, name=None)
+
+        return self.vggish(audio), label
+
+    def get_dataset(self):
+
+        file_paths_ds = tf.data.Dataset.from_tensor_slices(self.files_list)
+
+        onehot_label = tf.one_hot(self.labels_list, 397) #n species
+        labels_ds = tf.data.Dataset.from_tensor_slices(onehot_label)
+
+        if self.is_train == True:
+            # # get a noise_paths_ds with the same length as files_list
+            # noise_paths_ds = tf.data.Dataset.from_tensor_slices(self.noise_files)
+            # noise_paths_ds = noise_paths_ds.repeat().shuffle(1024)
+
+            paths_zip_ds = tf.data.Dataset.zip((file_paths_ds, labels_ds)) #, noise_paths_ds))
+            paths_zip_ds = paths_zip_ds.shuffle(len(self.files_list), reshuffle_each_iteration=True)
+
+        else:
+
+            paths_zip_ds = tf.data.Dataset.zip((file_paths_ds, labels_ds))
+
+        #ds = paths_zip_ds.map(self.load_audio, num_parallel_calls=AUTOTUNE)
+        ds = paths_zip_ds.map(self.get_vggish_embeding, num_parallel_calls=AUTOTUNE)
+
+        ds = ds.batch(self.batch_size)
+
+        ds = ds.prefetch(tf.data.experimental.AUTOTUNE)
+
+        return ds
+
+# if __name__ == '__main__':
+#     print("Testing SoundScapeDataset")
 #     print('-'*100)
 #
-#     # imports for testing
-#     import json
-#     import numpy as np
 #
-#     BATCH_SIZE=2
-#     # glob
-#     # sd = SimpleDataset('../../input/birdclef-2021/train_short_audio')
+#     DATA_PATH = '../../sswav5sec22k'
+#     BATCH_SIZE= 2
 #
-#     # create dataset with list
-#     # load the data ids
-#     label_file = 'data_split_single_label.json'
-#     data_path = '../../wav'
+#     df = pd.read_pickle('../../sswav5sec22k/soundscapes.pkl')
+#     files = df['row_id'].map(lambda x: os.path.join(DATA_PATH, x+'.wav')).tolist()
+#     train_labels = df['label'].tolist()
 #
-#     with open(os.path.join(data_path, 'input/resources', label_file), 'r') as f:
-#         data =  json.load(f)
+#     # print(train_files)
 #
-#     # get file lists for train, val, test
-#     train_files = [os.path.join(data_path, name)
-#                for name in data['train']['files']]
-#     val_files = [os.path.join(data_path, name)
-#                for name in data['val']['files']]
-#     test_files = [os.path.join(data_path, name)
-#                for name in data['test']['files']]
-#
-#
-#     # number of steps to test
-#     steps = np.floor(len(train_files)/BATCH_SIZE)
-#
-#     print(train_files[:3])
-#
-#     sd = SimpleDataset('../../input/birdclef-2021/train_short_audio',
+#     sd = SoundScapeDataset('../../sswav5sec22k',
 #                        name='train',
 #                        batch_size=BATCH_SIZE,
-#                        files_list=train_files,
+#                        files_list=files,
+#                        labels_list=train_labels,
 #                        is_test=True)
+#
 #
 #     ds = sd.get_dataset()
 #
-#     # ds = ds.batch(3)
+#     DATASET_SIZE = len(files)
 #
-#     # r = 0
-#     # for audio, label, filepath in ds.as_numpy_iterator():
-#     #
-#     #
-#     #     print('filepath:', audio)
-#     #     print('label', label)
-#     #     for idx, lab in enumerate(label):
-#     #         file_label = audio[idx]
-#     #         #file_label = audio[idx].split(b'/')[-2]
-#     #         print (f'label {sd.species_list[lab]} = {file_label}')
-#     #     print('audio shape:', audio.shape)
-#     #     print('label shape:', label.shape)
-#     #     r += 1
-#     #     #print(row[0].shape)
-#     #     if r > 1:
-#     #         break
+#     train_size = int(0.9 * DATASET_SIZE / BATCH_SIZE)
+#     val_size = int(0.1 * DATASET_SIZE / BATCH_SIZE)
+#
+#     train_ds = ds.take(train_size)
+#     val_ds = ds.skip(train_size)
+#
+#     train_iter = train_ds.as_numpy_iterator()
+#     val_ds = val_ds.as_numpy_iterator()
+#
+#     print('train', next(train_iter))
+#     print('validation', next(val_ds))
+#     print('printed iteration')
+if __name__ == '__main__':
+    print("Testing SimpleDataset")
+    print('-'*100)
+
+    # imports for testing
+    import json
+    import numpy as np
+
+    BATCH_SIZE=2
+    # glob
+    # sd = SimpleDataset('../../input/birdclef-2021/train_short_audio')
+
+    # create dataset with list
+    # load the data ids
+    label_file = 'data_split_single_label_tv.json'
+    data_path = '../../wav'
+
+    with open(os.path.join(data_path, 'input/resources', label_file), 'r') as f:
+        data =  json.load(f)
+
+#     # get file lists for train, val, test
+    train_files = [os.path.join(data_path, name)
+               for name in data['train']['files']]
+    val_files = [os.path.join(data_path, name)
+               for name in data['val']['files']]
+
+    classes = data['mapping']
+    n_classes = len(classes)
+
+    # print('classes: ', classes)
+    from sklearn.preprocessing import LabelEncoder
+
+    le =LabelEncoder()
+    le.fit(classes)
+
+    # transform labels
+    train_labels = le.transform(data['train']['labels']).tolist()
+    val_labels = le.transform(data['val']['labels']).tolist()
+
+    # select files from soundscapes without birds.
+    ssdf = pd.read_csv('../../input/birdclef-2021/train_soundscape_labels.csv')
+    ssdf_filtered = ssdf[ssdf['birds'] == 'nocall']
+    noise_files = [os.path.join('../../sswav5sec', fid + '.wav') for fid in ssdf_filtered['row_id']]
+
+    # number of steps to test
+    steps = np.floor(len(train_files)/BATCH_SIZE)
+
+
+    cd = CombinedDataset(train_files, train_labels, noise_files, batch_size=1, is_train=True)
+    ds = cd.get_dataset()
+
+    ds_iter = ds.as_numpy_iterator()
+    audio, label = next(ds_iter)
+
+    print(audio)
+    print(label)
+
+    print('Dataset Cardinality:', tf.data.experimental.cardinality(ds).numpy())
+    print('Noise Files:', len(noise_files))
+
 #
 #
 #
