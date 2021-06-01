@@ -31,6 +31,12 @@ def process_arguments():
                         default='wav_short_audio',
                         help='the subset of the data to use [all, kaggle].')
 
+    parser.add_argument('--learning_rate',
+                        type=float,
+                        dest='learning_rate',
+                        default=0.0001,
+                        help='the subset of the data to use [all, kaggle].')
+
     parser.add_argument('--augment-position',
                         action='store_const',
                         dest='augment_position',
@@ -70,7 +76,7 @@ ws = Workspace.from_config()
 
 train_dataset = Dataset.get_by_name(ws, name=args.data_subset)
 val_test_dataset = Dataset.get_by_name(ws, name=args.data_subset)
-
+noise_dataset = Dataset.get_by_name(ws, name='sswav5sec')
 
 # # set train dataset
 # train_dataset = Dataset.get_by_name(ws, name='wav_short_audio')
@@ -102,10 +108,12 @@ compute_target = ws.compute_targets[compute_name]
 
 # set the args to pass to the training script on azure
 azure_args = ['--data-path', train_dataset.as_named_input('train').as_mount(),# .as_download(), #
-              '--test-data-path', val_test_dataset.as_named_input('test').as_mount(),
+              # '--test-data-path', val_test_dataset.as_named_input('test').as_mount(),
+              '--noise-data-path', noise_dataset.as_named_input('noise').as_mount(),
               '--model-name', args.model_name,
               '--epochs', args.epochs,
-              '--data-subset', args.data_subset]
+              '--data-subset', args.data_subset,
+              '--learning-rate', args.learning_rate]
 
 # add bool arguments
 if args.augment_position:
