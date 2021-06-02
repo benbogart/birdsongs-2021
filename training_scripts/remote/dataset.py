@@ -265,7 +265,7 @@ class CombinedDataset():
             noise = tf.io.read_file(noise_path)
             noise, sr = tf.audio.decode_wav(noise)
 
-            gain0 = tf.random.uniform([], 0.6, 0.8)
+            gain0 = tf.random.uniform([], 0.4, 0.6)
 
             audio = gain0 * noise + (1 - gain0) * audio
 
