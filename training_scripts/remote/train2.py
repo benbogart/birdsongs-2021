@@ -252,8 +252,6 @@ if args.online:
 
 
 
-
-
 history = model.fit(train_ds,
                     # steps_per_epoch=steps_per_epoch, # only for quick testing
                     # validation_split=0.2,  # does not work with dataset
