@@ -135,7 +135,7 @@ if args.online:
     run.tag('model_name', args.model_name)
     run.tag('learning_rate', args.learning_rate)
     run.tag('data_subset', data_subset)
-    run.tag('noise_ratio', '0.7-0.9')
+    run.tag('noise_ratio', '0.4-0.6')
 
     # set local runid
     runid = run.id
@@ -236,7 +236,6 @@ model = model(8)
 
 if args.online:
     run.tag('conv_blocks', '8')
-    run.tag('dropout_rate', '0.2')
 
 # compile model
 
@@ -257,9 +256,16 @@ def f1_loss(y_true, y_pred):
     f1 = tf.where(tf.math.is_nan(f1), tf.zeros_like(f1), f1)
     return 1 - K.mean(f1)
 
+
+bce_loss = tf.keras.losses.BinaryCrossentropy(
+    from_logits=True, reduction=tf.keras.losses.Reduction.AUTO,
+    name='binary_crossentropy'
+)
+
 model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=args.learning_rate),
-              loss=f1_loss,
-              #loss="categorical_crossentropy",
+              # loss=f1_loss,
+              # loss="categorical_crossentropy",
+              loss=bce_loss,
               metrics=metrics)
 #              options=run_opts)
 
